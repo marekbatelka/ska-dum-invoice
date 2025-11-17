@@ -1,0 +1,6 @@
+token.json
+credentials.json
+__pycache__/
+faktury/
+qr/
+qr_latest.svg
