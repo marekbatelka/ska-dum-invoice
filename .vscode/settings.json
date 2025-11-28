@@ -3,5 +3,21 @@
     "python.analysis.diagnosticSeverityOverrides": {
         "reportMissingModuleSource": "none",
         "reportShadowedImports": "none"
+    },
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+    "pylint.enabled": true,
+    "pylint.severity": {
+        "convention": "Information",
+        "error": "Error",
+        "fatal": "Error",
+        "refactor": "Hint",
+        "warning": "Warning",
+        "info": "Information"
     }
 }

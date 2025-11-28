@@ -12,6 +12,7 @@ gspread = "*"
 qrplatba = "*"
 pillow = "*"
 cairosvg = "*"
+pylint = "*"
 
 [dev-packages]
 

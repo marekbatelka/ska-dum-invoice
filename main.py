@@ -31,7 +31,7 @@ def get_credentials():
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-    # If there are no valid credentials, request new ones
+        # If there are no valid credentials, request new ones
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
@@ -57,7 +57,9 @@ def get_credentials():
 def read_form(sheet_service):
     """Reads Google Forms data from the specified Google Sheet."""
     result = (
-        sheet_service.spreadsheets().values().get(spreadsheetId=INPUT_SPREADSHEET_ID, range=INPUT_RANGE_NAME)
+        sheet_service.spreadsheets()
+        .values()
+        .get(spreadsheetId=INPUT_SPREADSHEET_ID, range=INPUT_RANGE_NAME)
         .execute()
     )
     values = result.get("values", [])
@@ -112,7 +114,7 @@ def read_form(sheet_service):
                     "recipient_city": google_form["city"],
                     "recipient_zip": google_form["psc"],
                     "ico": google_form["ico"],
-                    "price": config.cena * int(mannights),
+                    "price": config.CENA * int(mannights),
                     "invoice_number": "20258001",  # Example invoice number/
                     "datecheckin": google_form["datecheckin"],
                     "datecheckout": google_form["datecheckout"],
@@ -139,9 +141,9 @@ def generate_invoice(form_data, service):
         # service = build("sheets", "v4", credentials=creds)
 
         # Get metadata of the spreadsheet to find the last sheet
-        spreadsheet_metadata = service.spreadsheets().get(
-            spreadsheetId=INVOICE_SPREADSHEET_ID
-        ).execute()
+        spreadsheet_metadata = (
+            service.spreadsheets().get(spreadsheetId=INVOICE_SPREADSHEET_ID).execute()
+        )
         sheets = spreadsheet_metadata.get("sheets", [])
         last_sheet = sheets[-1]  # Get the last sheet
         last_sheet_id = last_sheet["properties"]["sheetId"]
@@ -165,7 +167,7 @@ def generate_invoice(form_data, service):
         # type: ignore
         service.spreadsheets().batchUpdate(
             spreadsheetId=INVOICE_SPREADSHEET_ID, body=copy_request
-        ).execute() # type: ignore
+        ).execute()  # type: ignore
 
         # Use the new sheet name as the variable_symbol
         form_data["variable_symbol"] = new_sheet_name
@@ -220,12 +222,12 @@ def generate_invoice(form_data, service):
         due = datetime.now() + timedelta(days=7)
         price = form_data["price"]
         variable_symbol = new_sheet_name
-        bank_account_number = config.bank_account_number
+        bank_account_number = config.BANK_ACCOUNT_NUMBER
         generator = QRPlatbaGenerator(
             bank_account_number,
             int(price),
             x_vs=int(variable_symbol),
-            message=config.qr_message,
+            message=config.QR_MESSAGE,
             due_date=due,
         )
         img = generator.make_image()
