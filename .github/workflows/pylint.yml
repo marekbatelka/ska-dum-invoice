@@ -16,8 +16,9 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
+        python -m pip install pipenv
         python -m pipenv sync
-        pipenv install pylint
+        python -m pipenv install pylint
     - name: Analysing the code with pylint
       run: |
         pylint $(git ls-files '*.py')
