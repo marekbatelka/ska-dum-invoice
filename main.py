@@ -268,15 +268,11 @@ def main():
             print(f"Spreadsheet opened in browser: {spreadsheet_url}")
         else:
             print("Failed to generate invoice.")
-
-        # TODO > copy qr_latest.svg to the invoice sheet
-
+        # Open the latest QR code
         qr_path = os.path.abspath("qr_latest.svg")
         webbrowser.open(f"file://{qr_path}")
 
         print("Replace the QR code in the invoice sheet with qr_latest.svg")
-
-        # TODO > send email with invoice link
 
     except HttpError as err:
         print(f"Google API error occurred: {err}")
