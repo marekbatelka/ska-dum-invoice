@@ -1,19 +1,25 @@
+"""
+Main module to read Google Forms data, generate invoices in Google Sheets
+and create QR codes for payment."""
+
 import os
 import datetime
-import webbrowser  # Add this import at the top of the file
-import config
+from datetime import datetime, timedelta
+import webbrowser
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from ares_util.ares import call_ares
 from qrplatba import QRPlatbaGenerator
-from datetime import datetime, timedelta
+
+import config
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets"]
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 INPUT_SPREADSHEET_ID = config.INPUT_SPREADSHEET_ID
 INPUT_RANGE_NAME = config.INPUT_RANGE_NAME
 INVOICE_SPREADSHEET_ID = config.INVOICE_SPREADSHEET_ID
@@ -26,11 +32,10 @@ def get_credentials():
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
     # If there are no valid credentials, request new ones
-    if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
-            except Exception as e:  # Catching all exceptions to reinitialize the flow
+            except (RefreshError, ValueError, OSError) as e:
                 print(
                     f"Could not refresh credentials: {e}. Requesting new credentials."
                 )
@@ -38,20 +43,21 @@ def get_credentials():
                     "credentials.json", SCOPES
                 )
                 creds = flow.run_local_server(port=0)
+                creds = flow.run_local_server(port=0)
         else:
             flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
             creds = flow.run_local_server(port=0)
 
     # Save the credentials for the next run
-    with open("token.json", "w") as token:
+    with open("token.json", "w", encoding="utf-8") as token:
         token.write(creds.to_json())
     return creds
 
 
-def read_form(sheet_service, creds):
+def read_form(sheet_service):
+    """Reads Google Forms data from the specified Google Sheet."""
     result = (
-        sheet_service.values()
-        .get(spreadsheetId=INPUT_SPREADSHEET_ID, range=INPUT_RANGE_NAME)
+        sheet_service.spreadsheets().values().get(spreadsheetId=INPUT_SPREADSHEET_ID, range=INPUT_RANGE_NAME)
         .execute()
     )
     values = result.get("values", [])
@@ -81,20 +87,18 @@ def read_form(sheet_service, creds):
             google_form["datecheckout"] = row[15]
             google_form["timecheckout"] = row[16]
             google_form["pax"] = row[17]
-            print(
-                f'{google_form["name"]} {google_form["firstnamesurname"]} - {google_form["nickname"]}'
-            )
+            print(f'{google_form["name"]} {google_form["nickname"]}')
 
             confirm = input(
-                f"jsou to oni? Pokud ano zmackni klavesu 'a' a potvrd Enter. "
+                "jsou to oni? Pokud ano zmackni klavesu 'a' a potvrd Enter. "
             )
             if confirm == "a":
                 mannights = input("kolik osobo-noci? ")
                 pax = input("kolik osob? ")
                 ico = google_form["ico"]
                 data = call_ares(ico)
-                if data == False:
-                    raise ValueError(f"Ičo není vyplněno.")
+                if not data:
+                    raise ValueError("Ičo není vyplněno.")
 
                 # Prepare the form_data for the invoice
                 form_data = {
@@ -102,7 +106,7 @@ def read_form(sheet_service, creds):
                     "due_date": (datetime.now() + timedelta(days=14)).strftime(
                         "%Y-%m-%d"
                     ),
-                    "recipient_email":google_form["email"],
+                    "recipient_email": google_form["email"],
                     "recipient_name": google_form["name"],
                     "recipient_street": google_form["street"],
                     "recipient_city": google_form["city"],
@@ -123,7 +127,7 @@ def read_form(sheet_service, creds):
     return None
 
 
-def generate_invoice(creds, form_data):
+def generate_invoice(form_data, service):
     """
     Generates an invoice by cloning the last sheet in the spreadsheet,
     renaming it, and using the name as the variable_symbol.
@@ -132,10 +136,12 @@ def generate_invoice(creds, form_data):
     """
     try:
         # Build the Sheets API service
-        sheet_service = build("sheets", "v4", credentials=creds).spreadsheets()
+        # service = build("sheets", "v4", credentials=creds)
 
         # Get metadata of the spreadsheet to find the last sheet
-        spreadsheet_metadata = sheet_service.get(spreadsheetId=INVOICE_SPREADSHEET_ID).execute()
+        spreadsheet_metadata = service.spreadsheets().get(
+            spreadsheetId=INVOICE_SPREADSHEET_ID
+        ).execute()
         sheets = spreadsheet_metadata.get("sheets", [])
         last_sheet = sheets[-1]  # Get the last sheet
         last_sheet_id = last_sheet["properties"]["sheetId"]
@@ -156,9 +162,10 @@ def generate_invoice(creds, form_data):
                 }
             ]
         }
-        sheet_service.batchUpdate(
+        # type: ignore
+        service.spreadsheets().batchUpdate(
             spreadsheetId=INVOICE_SPREADSHEET_ID, body=copy_request
-        ).execute()
+        ).execute() # type: ignore
 
         # Use the new sheet name as the variable_symbol
         form_data["variable_symbol"] = new_sheet_name
@@ -195,7 +202,9 @@ def generate_invoice(creds, form_data):
                 "range": f"'{new_sheet_name}'!A30",
                 "values": [
                     [
-                        f"Fakturujeme vám pronájem skautské základny v termínu \nod {form_data['datecheckin']} do {form_data['datecheckout']} pro {form_data['pax_input']} osob"
+                        f"Fakturujeme vám pronájem skautské základny v termínu \nod {
+                            form_data['datecheckin']} do {form_data['datecheckout']
+                            } pro {form_data['pax_input']} osob"
                     ]
                 ],
             },
@@ -203,7 +212,7 @@ def generate_invoice(creds, form_data):
 
         # Update the new sheet with the prepared data
         body = {"valueInputOption": "RAW", "data": updates}
-        sheet_service.values().batchUpdate(
+        service.spreadsheets().values().batchUpdate(
             spreadsheetId=INVOICE_SPREADSHEET_ID, body=body
         ).execute()
 
@@ -227,7 +236,7 @@ def generate_invoice(creds, form_data):
 
         # Open the QR code in the default web browser
         webbrowser.open("qr_latest.svg")
-        print(f"QR code opened in browser: qr_latest.svg")
+        print("QR code opened in browser: qr_latest.svg")
 
         return new_sheet_name
 
@@ -235,21 +244,22 @@ def generate_invoice(creds, form_data):
         print(f"An error occurred: {err}")
         return None
 
+
 def main():
+    """Main function to execute the invoice generation process."""
     # TODO > handle exceptions
-    # TODO > use config file
     creds = get_credentials()
 
     # Get input data from Google Sheet
 
-    sheet_service = build("sheets", "v4", credentials=creds).spreadsheets()
-    form_data = read_form(sheet_service, creds)
+    sheet_service = build("sheets", "v4", credentials=creds)
+    form_data = read_form(sheet_service)
     if form_data is None:
         print("No valid form data found.")
         return
 
     # Generate invoice
-    new_sheet_name = generate_invoice(creds, form_data)
+    new_sheet_name = generate_invoice(form_data, service=sheet_service)
     if new_sheet_name:
         print(f"Invoice generated with variable symbol: {new_sheet_name}")
         # Open the spreadsheet in the default web browser
